@@ -28,8 +28,6 @@ const menuItems = [
   { text: "Projects", icon: <ProjectIcon />, path: "/projects" },
   { text: "Skills", icon: <SkillIcon />, path: "/skills" },
   { text: "Contacts", icon: <ContactMailIcon />, path: "/contacts" },
-  { text: "Image Upload", icon: <ImageIcon />, path: "/image-upload" },
-  { text: "Storage", icon: <FolderIcon />, path: "/storage" },
 ];
 
 const Sidebar = ({ mobileOpen, handleDrawerToggle }) => {

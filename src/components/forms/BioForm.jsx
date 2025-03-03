@@ -446,14 +446,14 @@ const BioForm = () => {
   const { enableBodyScroll, disableBodyScroll } = useScrollLock();
   const [bio, setBio] = useState({
     name: "",
-    roles: [], // Should be configured as a text array in Supabase
+    roles: [],
     description: "",
     github: "",
     resume: "",
     linkedin: "",
     twitter: "",
     insta: "",
-    image: "",
+    image: "", // Changed from Image to image
   });
   const [copyright, setCopyright] = useState("");
   const [roleInput, setRoleInput] = useState("");
@@ -862,7 +862,36 @@ const BioForm = () => {
                 subtitle="Your basic profile information"
               />
             </Grid>
-            {/* Profile Image Section */}
+            {/* Profile Image URL */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Profile Image URL"
+                value={bio.Image || ""} // Changed from Image to image
+                onChange={(e) => setBio({ ...bio, Image: e.target.value })}
+                sx={textFieldStyles}
+                InputProps={{
+                  startAdornment: (
+                    <Box
+                      component="img"
+                      src={bio.Image || ""} // Changed from Image to image
+                      alt=""
+                      sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 1,
+                        mr: 1,
+                        objectFit: "cover",
+                        display: bio.Image ? "block" : "none", // Changed from Image to image
+                      }}
+                    />
+                  ),
+                }}
+                helperText="Enter the URL of your profile image"
+              />
+            </Grid>
+
+            {/* Avatar Preview */}
             <Grid item xs={12} display="flex" justifyContent="center">
               <Box
                 sx={{
@@ -874,19 +903,12 @@ const BioForm = () => {
                   },
                 }}
               >
-                <Avatar src={bio.Image} alt={bio.name} sx={avatarStyles} />
+                <Avatar
+                  src={bio.Image || ""} // Changed from Image to image
+                  alt={bio.name}
+                  sx={avatarStyles}
+                />
               </Box>
-            </Grid>
-
-            {/* Profile Image URL */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Profile Image URL"
-                value={bio.Image || ""}
-                onChange={(e) => setBio({ ...bio, image: e.target.value })}
-                sx={textFieldStyles}
-              />
             </Grid>
 
             {/* Name */}

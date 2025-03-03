@@ -148,7 +148,7 @@ const Header = ({ handleDrawerToggle, user }) => {
               },
             }}
           >
-            Sandesh Arsud Portfolio Management
+            Ajay Dawkar Portfolio Management
           </Typography>
 
           <Box

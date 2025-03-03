@@ -137,7 +137,7 @@ const Login = () => {
           {/* Add Avatar here */}
           <Avatar
             src={avatarUrl}
-            alt="Sandesh Arsud"
+            alt="Ajay Dawkar"
             sx={{
               width: 120,
               height: 120,
@@ -180,7 +180,7 @@ const Login = () => {
               fontWeight: 500,
             }}
           >
-            Sandesh Arsud Portfolio Management
+            Ajay Dawkar Portfolio Management
           </Typography>
         </Box>
 
