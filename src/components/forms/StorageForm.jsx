@@ -121,7 +121,7 @@ const styles = {
     gridTemplateColumns: {
       xs: "1fr",
       sm: "repeat(2, 1fr)",
-      md: "repeat(3, 1fr)",
+      md: "repeat(4, 1fr)",
     },
     gap: 3,
     mb: 4,
@@ -131,7 +131,9 @@ const styles = {
     borderRadius: 2,
     backgroundColor: "#FFFFFF",
     boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-    transition: "transform 0.2s ease, box-shadow 0.2s ease",
+    transition: "all 0.2s ease",
+    border: "1px solid",
+    borderColor: "rgba(226, 232, 240, 0.8)",
     "&:hover": {
       transform: "translateY(-4px)",
       boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
@@ -141,7 +143,7 @@ const styles = {
     fontSize: { xs: "1.25rem", sm: "1.5rem" },
     fontWeight: 600,
     color: "#0F172A",
-    mt: 1,
+    lineHeight: 1.2,
   },
 
   // Folder grid styles
@@ -417,92 +419,50 @@ const dialogStyles = {
 
 // Update the toast configuration
 const toastConfig = {
-  // Base styles for all toasts
+  duration: 3000,
+  position: "top-center",
   style: {
     background: "rgba(255, 255, 255, 0.95)",
     backdropFilter: "blur(8px)",
     borderRadius: "12px",
-    padding: "12px 24px",
+    padding: "16px 24px",
     color: "#1E293B",
     fontSize: "0.875rem",
     fontWeight: 500,
     boxShadow: "0 8px 32px rgba(0, 0, 0, 0.08)",
     border: "1px solid rgba(226, 232, 240, 0.8)",
     maxWidth: "380px",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
   },
-
-  // Success toast variant
   success: {
-    duration: 3000,
-    icon: (
-      <SuccessIcon
-        sx={{
-          color: "#10B981",
-          fontSize: 20,
-          animation: "scale-in 0.3s ease-out",
-          "@keyframes scale-in": {
-            "0%": { transform: "scale(0)" },
-            "50%": { transform: "scale(1.2)" },
-            "100%": { transform: "scale(1)" },
-          },
-        }}
-      />
-    ),
+    icon: "✅",
     style: {
       border: "1px solid #A7F3D0",
       background:
         "linear-gradient(145deg, rgba(255,255,255,0.95), rgba(236,253,245,0.95))",
     },
   },
-
-  // Error toast variant
   error: {
-    duration: 4000,
-    icon: (
-      <ErrorIcon
-        sx={{
-          color: "#EF4444",
-          fontSize: 20,
-          animation: "shake 0.5s ease-in-out",
-          "@keyframes shake": {
-            "0%, 100%": { transform: "translateX(0)" },
-            "25%": { transform: "translateX(-4px) rotate(-3deg)" },
-            "75%": { transform: "translateX(4px) rotate(3deg)" },
-          },
-        }}
-      />
-    ),
+    icon: "⚠️",
     style: {
       border: "1px solid #FEE2E2",
       background:
         "linear-gradient(145deg, rgba(255,255,255,0.95), rgba(254,242,242,0.95))",
     },
   },
-
-  // Loading toast variant
   loading: {
-    icon: (
-      <CircularProgress
-        size={20}
-        sx={{
-          color: "#6366F1",
-          animation: "fade-in 0.3s ease-out",
-          "@keyframes fade-in": {
-            "0%": { opacity: 0 },
-            "100%": { opacity: 1 },
-          },
-        }}
-      />
-    ),
+    icon: "⏳",
     style: {
       border: "1px solid #E0E7FF",
       background:
         "linear-gradient(145deg, rgba(255,255,255,0.95), rgba(238,242,255,0.95))",
     },
   },
+};
+
+// Helper function to show toast
+const showToast = (message, type = "success") => {
+  toast.dismiss(); // Dismiss any existing toasts
+  toast[type](message, toastConfig);
 };
 
 const StorageForm = () => {
@@ -535,8 +495,7 @@ const StorageForm = () => {
 
   // Update fetchBucketImages function
   const fetchBucketImages = async () => {
-    setIsLoading(true);
-    const loadingToast = toast.loading("Loading files...");
+    const loadingId = toast.loading("Loading files...", toastConfig);
     try {
       const { folders: newFolders, files } = await storageService.listFiles(
         currentFolder === "root" ? "" : currentFolder
@@ -545,14 +504,13 @@ const StorageForm = () => {
       setFolders(["root", ...newFolders].filter(Boolean));
       setBucketImages(files);
 
-      toast.success("Files loaded successfully!", { id: loadingToast });
+      toast.dismiss(loadingId);
     } catch (error) {
       console.error("Error fetching files:", error);
-      toast.error(`Failed to load files: ${error.message}`, {
-        id: loadingToast,
+      toast.error("Failed to load files", {
+        ...toastConfig,
+        id: loadingId,
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -829,17 +787,11 @@ const StorageForm = () => {
   const handleUploadFile = async (event) => {
     event.preventDefault();
     if (!selectedFile) {
-      toast.error("Please select a file", {
-        icon: "📁",
-        description: "You need to select a file before uploading",
-      });
+      showToast("Please select a file", "error");
       return;
     }
 
-    const loadingToast = toast.loading("Preparing upload...", {
-      description: `Uploading ${selectedFile.name}`,
-    });
-
+    const loadingId = toast.loading("Uploading file...", toastConfig);
     try {
       const path =
         selectedFolder === "root"
@@ -848,58 +800,174 @@ const StorageForm = () => {
       await storageService.uploadFile(selectedFile, path);
       await fetchBucketImages();
       handleCloseFileDialog();
-      toast.success("File uploaded successfully!", {
-        id: loadingToast,
-        description: `${selectedFile.name} has been uploaded`,
-        duration: 3000,
+      toast.success("File uploaded successfully", {
+        ...toastConfig,
+        id: loadingId,
       });
     } catch (error) {
       console.error("Error uploading file:", error);
-      toast.error(`Upload failed: ${error.message}`, {
-        id: loadingToast,
-        description: error.message,
-        duration: 4000,
+      toast.error("Upload failed", {
+        ...toastConfig,
+        id: loadingId,
       });
     }
   };
 
   // Update the Stats component to filter out 0 byte files
   const Stats = () => {
-    // Filter out 0 byte files from all calculations
     const validFiles = bucketImages.filter((img) => img.size > 0);
-
-    // Get files count based on current folder
     const currentFolderFiles =
       currentFolder === "root"
-        ? validFiles // Show count of all files in root
+        ? validFiles
         : validFiles.filter((img) => img.folder === currentFolder);
 
-    // Calculate folder size
+    const totalSize = validFiles.reduce((sum, img) => sum + img.size, 0);
     const folderSize =
       currentFolder === "root"
-        ? validFiles.reduce((sum, img) => sum + img.size, 0) // Total size of all files
+        ? totalSize
         : validFiles
             .filter((img) => img.path.startsWith(currentFolder))
             .reduce((sum, img) => sum + img.size, 0);
 
-    // Get total folders count
     const folderCount = folders.length - 1; // Subtract 1 for 'root'
 
     return (
       <Box sx={styles.statsContainer}>
+        {/* Files Card */}
         <Paper sx={styles.statCard}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-            <FileCopyIcon sx={{ color: "#64748B" }} />
-            <Typography sx={styles.statLabel}>
-              {currentFolder === "root" ? "Total Files" : "Files in Folder"}
-            </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1,
+                bgcolor: "#EFF6FF",
+                color: "#3B82F6",
+                display: "flex",
+              }}
+            >
+              <FileCopyIcon />
+            </Box>
+            <Box>
+              <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
+                {currentFolder === "root" ? "Total Files" : "Files in Folder"}
+              </Typography>
+              <Typography sx={styles.statValue}>
+                {currentFolderFiles.length}
+              </Typography>
+            </Box>
           </Box>
-          <Typography sx={styles.statValue}>
-            {currentFolderFiles.length}
-          </Typography>
         </Paper>
 
-        {/* ... rest of Stats component ... */}
+        {/* Size Card */}
+        <Paper sx={styles.statCard}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1,
+                bgcolor: "#F0FDF4",
+                color: "#22C55E",
+                display: "flex",
+              }}
+            >
+              <StorageIcon />
+            </Box>
+            <Box>
+              <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
+                {currentFolder === "root" ? "Total Size" : "Folder Size"}
+              </Typography>
+              <Typography sx={styles.statValue}>
+                {formatFileSize(folderSize)}
+              </Typography>
+            </Box>
+          </Box>
+        </Paper>
+
+        {/* Folders Card */}
+        <Paper sx={styles.statCard}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1,
+                bgcolor: "#FDF4FF",
+                color: "#D946EF",
+                display: "flex",
+              }}
+            >
+              <FolderIcon />
+            </Box>
+            <Box>
+              <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
+                Total Folders
+              </Typography>
+              <Typography sx={styles.statValue}>{folderCount}</Typography>
+            </Box>
+          </Box>
+        </Paper>
+
+        {/* Storage Card */}
+        <Paper sx={styles.statCard}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1,
+                bgcolor: "#FFF7ED",
+                color: "#F97316",
+                display: "flex",
+              }}
+            >
+              <CloudIcon />
+            </Box>
+            <Box>
+              <Typography sx={{ color: "#64748B", fontSize: "0.875rem" }}>
+                Storage Used
+              </Typography>
+              <Box sx={{ mt: 1 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    mb: 0.5,
+                  }}
+                >
+                  <Typography sx={styles.statValue}>
+                    {((totalSize / (1024 * 1024 * 1024)) * 100).toFixed(1)}%
+                  </Typography>
+                  <Typography sx={{ color: "#94A3B8", fontSize: "0.75rem" }}>
+                    of 1GB
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    height: 4,
+                    bgcolor: "#FDA4AF",
+                    borderRadius: 2,
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      height: "100%",
+                      width: `${Math.min(
+                        (totalSize / (1024 * 1024 * 1024)) * 100,
+                        100
+                      )}%`,
+                      bgcolor: "#F97316",
+                      borderRadius: 2,
+                    }}
+                  />
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </Paper>
       </Box>
     );
   };
@@ -1458,7 +1526,9 @@ const StorageForm = () => {
               onClick={handleCloseFolderDialog}
               sx={{
                 color: "#64748B",
-                "&:hover": { backgroundColor: "#F1F5F9" },
+                "&:hover": {
+                  backgroundColor: "#F1F5F9",
+                },
               }}
             >
               Cancel
