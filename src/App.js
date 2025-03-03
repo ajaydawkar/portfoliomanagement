@@ -20,6 +20,7 @@ import SkillForm from "./components/forms/SkillForm.jsx";
 import Login from "./components/Login.jsx";
 import ContactForm from "./components/forms/ContactForm.jsx";
 import Footer from "./components/Footer";
+import StorageForm from "./components/forms/StorageForm.jsx";
 
 import { supabase } from "./config/supabase";
 
@@ -100,6 +101,7 @@ const App = () => {
               <Route path="/projects" element={<ProjectForm />} />
               <Route path="/skills" element={<SkillForm />} />
               <Route path="/contacts" element={<ContactForm />} />
+              <Route path="/storage" element={<StorageForm />} />
               <Route path="*" element={<Navigate to="/bio" replace />} />
             </Routes>
           </Box>
