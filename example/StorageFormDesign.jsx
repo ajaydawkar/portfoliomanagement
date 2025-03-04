@@ -23,7 +23,6 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  CircularProgress,
 } from "@mui/material";
 
 // Add all required icons
@@ -43,7 +42,7 @@ import {
   Info as InfoIcon,
   Sync as LoadingIcon,
 } from "@mui/icons-material";
-// import { storage as configuredStorage } from "../../config/firebase";
+import { storage as configuredStorage } from "../../config/firebase";
 import {
   ref,
   getDownloadURL,
@@ -60,12 +59,6 @@ import { motion } from "framer-motion";
 
 // Add import
 import { useScrollLock } from "../../hooks/useScrollLock";
-
-// Add import
-// import { google } from "googleapis";
-
-// Add import
-import { SupabaseStorageService } from "../../services/supabaseStorage";
 
 // Create styled components
 const StyledDialog = styled(Dialog)`
@@ -142,10 +135,6 @@ const styles = {
     fontWeight: 600,
     color: "#0F172A",
     mt: 1,
-  },
-  statLabel: {
-    color: "#64748B",
-    fontSize: "0.875rem",
   },
 
   // Folder grid styles
@@ -419,10 +408,9 @@ const dialogStyles = {
   },
 };
 
-// Update the toast configuration
+// Add toast configuration
 const toastConfig = {
   position: "top-center",
-  duration: 3000,
   style: {
     background: "rgba(15, 23, 42, 0.95)",
     color: "white",
@@ -435,14 +423,8 @@ const toastConfig = {
     fontSize: "14px",
     fontWeight: 500,
     boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
   },
   success: {
-    style: {
-      background: "rgba(16, 185, 129, 0.95)",
-    },
     icon: (
       <SuccessIcon
         sx={{
@@ -454,11 +436,12 @@ const toastConfig = {
         }}
       />
     ),
+    style: {
+      background: "rgba(16, 185, 129, 0.95)",
+    },
+    duration: 2000,
   },
   error: {
-    style: {
-      background: "rgba(239, 68, 68, 0.95)",
-    },
     icon: (
       <ErrorIcon
         sx={{
@@ -471,11 +454,12 @@ const toastConfig = {
         }}
       />
     ),
+    style: {
+      background: "rgba(239, 68, 68, 0.95)",
+    },
+    duration: 3000,
   },
   loading: {
-    style: {
-      background: "rgba(30, 41, 59, 0.95)",
-    },
     icon: (
       <LoadingIcon
         sx={{
@@ -487,49 +471,10 @@ const toastConfig = {
         }}
       />
     ),
-    duration: Infinity,
-  },
-  info: {
     style: {
-      background: "rgba(59, 130, 246, 0.95)",
+      background: "rgba(30, 41, 59, 0.95)",
     },
-    icon: <InfoIcon sx={{ animation: "fadeIn 0.5s ease-in" }} />,
   },
-};
-
-// First, add a common toast message component
-const ToastMessage = ({ message, description }) => (
-  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-    <Typography sx={{ fontWeight: 500 }}>{message}</Typography>
-    {description && (
-      <Typography sx={{ fontSize: "0.75rem", opacity: 0.9 }}>
-        {description}
-      </Typography>
-    )}
-  </Box>
-);
-
-// Single enhanced showToast function
-const showToast = (message, type = "success") => {
-  // Dismiss all existing toasts
-  toast.dismiss();
-
-  // Handle different message formats
-  const toastMessage =
-    typeof message === "string" ? (
-      <ToastMessage message={message} />
-    ) : (
-      <ToastMessage
-        message={message.title || message.message}
-        description={message.description}
-      />
-    );
-
-  // Return the toast ID for reference
-  return toast[type](toastMessage, {
-    ...toastConfig,
-    duration: type === "loading" ? Infinity : 3000,
-  });
 };
 
 const StorageForm = () => {
@@ -552,41 +497,84 @@ const StorageForm = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Add new state variables
-  const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-
-  // Replace the existing storage initialization
-  const storageService = new SupabaseStorageService();
-
-  // Update fetchBucketImages function
+  // Copy the necessary functions from ImageUploadForm
   const fetchBucketImages = async () => {
-    try {
-      const { folders: newFolders, files } = await storageService.listFiles(
-        currentFolder === "root" ? "" : currentFolder
-      );
+    const loadingToast = toast.loading(
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Typography>Loading storage data...</Typography>
+      </Box>,
+      { ...toastConfig }
+    );
 
-      if (!files) {
-        throw new Error("Unable to fetch files");
+    try {
+      const storageRef = ref(configuredStorage);
+      const result = await listAll(storageRef);
+      const allItems = [];
+
+      // Get items from root
+      for (const item of result.items) {
+        allItems.push(item);
       }
 
-      // Filter out any null or undefined folders
-      const validFolders = ["root", ...newFolders].filter(Boolean);
+      // Get items from all folders
+      for (const folder of result.prefixes) {
+        const folderResult = await listAll(folder);
+        for (const item of folderResult.items) {
+          allItems.push(item);
+        }
+      }
 
-      // Filter out any duplicate folders
-      const uniqueFolders = [...new Set(validFolders)];
+      const imagesData = await Promise.all(
+        allItems.map(async (item) => {
+          try {
+            const url = await getDownloadURL(item);
+            const metadata = await getMetadata(item);
+            return {
+              id: item.name,
+              name: metadata.customMetadata?.customName || item.name,
+              url: url,
+              size: metadata.size,
+              uploadTime: metadata.timeCreated,
+              contentType: metadata.contentType,
+              path: item.fullPath,
+              folder: item.parent.fullPath || "root",
+            };
+          } catch (error) {
+            console.error(`Error processing item ${item.name}:`, error);
+            return null;
+          }
+        })
+      );
 
+      const validImages = imagesData.filter((image) => image !== null);
+      validImages.sort(
+        (a, b) => new Date(b.uploadTime) - new Date(a.uploadTime)
+      );
+
+      const uniqueFolders = [...new Set(validImages.map((img) => img.folder))];
       setFolders(uniqueFolders);
-      setBucketImages(files || []);
-    } catch (error) {
-      console.error("Error fetching files:", error);
-      showToast(
+
+      setBucketImages(validImages);
+
+      toast.success(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>Storage data loaded successfully</Typography>
+        </Box>,
         {
-          title: "Failed to fetch files",
-          description: error.message,
-        },
-        "error"
+          ...toastConfig,
+          id: loadingToast,
+        }
+      );
+    } catch (error) {
+      console.error("Error fetching bucket images:", error);
+      toast.error(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>Failed to fetch storage data: {error.message}</Typography>
+        </Box>,
+        {
+          ...toastConfig,
+          id: loadingToast,
+        }
       );
     }
   };
@@ -608,99 +596,32 @@ const StorageForm = () => {
     fetchData();
   }, []);
 
-  useEffect(() => {
-    const initializeStorage = async () => {
-      const toastId = showToast({
-        title: "Initializing storage...",
-        description: "Setting up your storage bucket",
-      });
-
-      try {
-        // Ensure user is authenticated before initialization
-        const session = await storageService.getSession();
-        if (!session) {
-          throw new Error("Please sign in to access storage");
-        }
-
-        // Initialize with RLS policies
-        await storageService.initBucket({
-          public: false, // Make bucket private
-          allowedUsers: [session.user.id], // Allow only current user
-        });
-
-        await fetchBucketImages();
-
-        toast.success(
-          <ToastMessage
-            message="Storage ready"
-            description="Your storage has been initialized"
-          />,
-          { ...toastConfig, id: toastId }
-        );
-      } catch (error) {
-        console.error("Storage initialization error:", error);
-
-        toast.error(
-          <ToastMessage
-            message="Storage initialization failed"
-            description={error.message}
-          />,
-          { ...toastConfig, id: toastId }
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeStorage();
-  }, []); // Run once on component mount
-
-  useEffect(() => {
-    const initializeStorage = async () => {
-      const loadingToast = toast.loading("Initializing storage...");
-      try {
-        await fetchBucketImages();
-        toast.dismiss(loadingToast);
-      } catch (error) {
-        console.error("Error initializing storage:", error);
-        toast.error("Failed to initialize storage");
-      }
-    };
-
-    initializeStorage();
-  }, [currentFolder]); // Re-fetch when folder changes
-
   // ... copy other necessary functions
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
-    toast.success(
-      <ToastMessage message={`Page ${newPage + 1}`} />,
-      toastConfig
-    );
+    toast.success(`Page ${newPage + 1}`, {
+      duration: 1000,
+      icon: "📄",
+    });
   };
 
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
-    toast.success(
-      <ToastMessage message={`Showing ${event.target.value} items per page`} />,
-      toastConfig
-    );
+    toast.success(`Showing ${event.target.value} items per page`, {
+      duration: 1000,
+      icon: "📊",
+    });
   };
 
-  const handleCopyUrl = async (url) => {
-    try {
-      // Verify URL is valid before copying
-
-      await navigator.clipboard.writeText(url);
-      toast.success(
-        <ToastMessage message="URL copied to clipboard" />,
-        toastConfig
-      );
-    } catch (error) {
-      console.error("Error copying URL:", error);
-      toast.error("Invalid URL or copying failed");
-    }
+  const handleCopyUrl = (url) => {
+    navigator.clipboard.writeText(url);
+    toast.success(
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Typography>URL copied to clipboard!</Typography>
+      </Box>,
+      { ...toastConfig }
+    );
   };
 
   const handleDelete = (item) => {
@@ -715,23 +636,48 @@ const StorageForm = () => {
     enableBodyScroll();
   };
 
-  // Update handleConfirmDelete function
   const handleConfirmDelete = async () => {
-    const loadingToast = toast.loading("Deleting file...", toastConfig);
+    const loadingToast = toast.loading(
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Typography>Deleting file...</Typography>
+      </Box>,
+      { ...toastConfig }
+    );
+
     try {
-      if (!itemToDelete) throw new Error("No file selected for deletion");
-      await storageService.deleteFile(itemToDelete.path);
+      if (!itemToDelete) {
+        throw new Error("No file selected for deletion");
+      }
+
+      // Create a reference using the full path
+      const fileRef = ref(configuredStorage, itemToDelete.path);
+
+      // Delete the file
+      await deleteObject(fileRef);
+
+      // Refresh the file list
       await fetchBucketImages();
-      toast.success("File deleted successfully!", {
-        ...toastConfig,
-        id: loadingToast,
-      });
+
+      toast.success(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>File deleted successfully!</Typography>
+        </Box>,
+        {
+          ...toastConfig,
+          id: loadingToast,
+        }
+      );
       handleCloseDelete();
     } catch (error) {
-      toast.error(`Failed to delete file: ${error.message}`, {
-        ...toastConfig,
-        id: loadingToast,
-      });
+      toast.error(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>Failed to delete file: {error.message}</Typography>
+        </Box>,
+        {
+          ...toastConfig,
+          id: loadingToast,
+        }
+      );
     }
   };
 
@@ -743,31 +689,13 @@ const StorageForm = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  const handleFolderClick = async (folder) => {
-    const loadingId = toast.loading(
-      <ToastMessage message={`Opening ${folder}...`} />,
-      toastConfig
-    );
-    try {
-      const newFolder = folder === "root" ? "" : folder;
-      setCurrentFolder(folder);
-      const pathArray = folder === "root" ? ["root"] : ["root", folder];
-      setBreadcrumbs(pathArray);
-      setPage(0);
-      await fetchBucketImages();
-      toast.success(<ToastMessage message={`Opened ${folder}`} />, {
-        ...toastConfig,
-        id: loadingId,
-      });
-    } catch (error) {
-      toast.error(
-        <ToastMessage
-          message="Failed to open folder"
-          description={error.message}
-        />,
-        { ...toastConfig, id: loadingId }
-      );
-    }
+  const handleFolderClick = (folder) => {
+    setCurrentFolder(folder);
+    const pathArray =
+      folder === "root" ? ["root"] : ["root", ...folder.split("/")];
+    setBreadcrumbs(pathArray);
+    setPage(0);
+    toast.success(`Navigated to ${folder === "root" ? "Home" : folder}`);
   };
 
   const handleBreadcrumbClick = (index) => {
@@ -776,12 +704,7 @@ const StorageForm = () => {
     setCurrentFolder(folder);
     setBreadcrumbs(newPath);
     setPage(0);
-    toast.success(
-      <ToastMessage
-        message={`Navigated to ${folder === "root" ? "Home" : folder}`}
-      />,
-      toastConfig
-    );
+    toast.success(`Navigated to ${folder === "root" ? "Home" : folder}`);
   };
 
   const handleRename = async (event) => {
@@ -791,14 +714,14 @@ const StorageForm = () => {
     const loadingToast = toast.loading("Renaming file...");
     try {
       // Create references for old and new paths
-      // const oldRef = ref(configuredStorage, fileToRename.path);
+      const oldRef = ref(configuredStorage, fileToRename.path);
       const fileExtension = fileToRename.name.split(".").pop();
       const newName = `${newFileName.trim()}.${fileExtension}`;
       const newPath = fileToRename.path.replace(fileToRename.name, newName);
-      // const newRef = ref(configuredStorage, newPath);
+      const newRef = ref(configuredStorage, newPath);
 
       // Get file metadata
-      // const metadata = await getMetadata(oldRef);
+      const metadata = await getMetadata(oldRef);
 
       try {
         // Download the file using fetch with CORS mode
@@ -815,17 +738,17 @@ const StorageForm = () => {
         const blob = await response.blob();
 
         // Upload with new name
-        // await uploadBytes(newRef, blob, {
-        //   contentType: metadata.contentType,
-        //   customMetadata: {
-        //     ...metadata.customMetadata,
-        //     customName: newName,
-        //     originalName: fileToRename.name,
-        //   },
-        // });
+        await uploadBytes(newRef, blob, {
+          contentType: metadata.contentType,
+          customMetadata: {
+            ...metadata.customMetadata,
+            customName: newName,
+            originalName: fileToRename.name,
+          },
+        });
 
         // Delete old file
-        // await deleteObject(oldRef);
+        await deleteObject(oldRef);
 
         // Refresh the file list
         await fetchBucketImages();
@@ -868,341 +791,167 @@ const StorageForm = () => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
-      toast.success(
-        <ToastMessage
-          message="File selected"
-          description={`${file.name} (${formatFileSize(file.size)})`}
-        />,
-        toastConfig
-      );
+      toast.success("File selected successfully!");
     }
   };
 
-  // Update handleCreateFolder function
   const handleCreateFolder = async (event) => {
     event.preventDefault();
     const formData = new FormData(event.target);
     const folderName = formData.get("folderName").trim();
 
     if (!folderName) {
-      toast.error("Please enter a folder name", {
-        icon: "📁",
-        description: "The folder name cannot be empty",
-      });
+      toast.error("Please enter a folder name");
       return;
     }
 
-    const loadingToast = toast.loading("Creating folder...", {
-      description: `Creating ${folderName}`,
-    });
-
+    const loadingToast = toast.loading("Creating folder...");
     try {
-      const path =
+      const newFolder =
         currentFolder === "root"
           ? folderName
           : `${currentFolder}/${folderName}`;
-      await storageService.createFolder(path);
+      // Create an empty file to represent the folder
+      const folderRef = ref(configuredStorage, `${newFolder}/.folder`);
+      const emptyBlob = new Blob([""], { type: "text/plain" });
+      await uploadBytes(folderRef, emptyBlob);
+
       await fetchBucketImages();
+      toast.dismiss(loadingToast);
+      toast.success("Folder created successfully!");
       handleCloseFolderDialog();
-      toast.success("Folder created", {
-        id: loadingToast,
-        icon: "📁",
-        description: `${folderName} has been created successfully`,
-        duration: 3000,
-      });
     } catch (error) {
-      console.error("Error creating folder:", error);
-      toast.error(`Failed to create folder: ${error.message}`, {
-        id: loadingToast,
-        description: error.message,
-        duration: 4000,
-      });
+      toast.dismiss(loadingToast);
+      toast.error(`Failed to create folder: ${error.message}`);
     }
   };
 
-  // Update handleUploadFile function
   const handleUploadFile = async (event) => {
     event.preventDefault();
     if (!selectedFile) {
-      showToast(
-        {
-          title: "Please select a file",
-          description: "No file has been selected for upload",
-        },
-        "error"
+      toast.error(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>Please select a file</Typography>
+        </Box>,
+        { ...toastConfig }
       );
       return;
     }
 
-    const toastId = showToast(
-      {
-        title: "Uploading file...",
-        description: `Uploading ${selectedFile.name}`,
-      },
-      "loading"
+    const loadingToast = toast.loading(
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Typography>Uploading file...</Typography>
+      </Box>,
+      { ...toastConfig }
     );
 
     try {
-      const path =
+      const filePath =
         selectedFolder === "root"
           ? selectedFile.name
           : `${selectedFolder}/${selectedFile.name}`;
 
-      await storageService.uploadFile(selectedFile, path);
-      await fetchBucketImages();
-      handleCloseFileDialog();
+      const fileRef = ref(configuredStorage, filePath);
+      await uploadBytes(fileRef, selectedFile);
 
-      showToast(
+      await fetchBucketImages();
+
+      toast.success(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>File uploaded successfully!</Typography>
+        </Box>,
         {
-          title: "File uploaded successfully",
-          description: selectedFile.name,
-        },
-        "success"
+          ...toastConfig,
+          id: loadingToast,
+        }
       );
+      handleCloseFileDialog();
     } catch (error) {
-      showToast(
+      toast.error(
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography>Failed to upload file: {error.message}</Typography>
+        </Box>,
         {
-          title: "Upload failed",
-          description: error.message,
-        },
-        "error"
+          ...toastConfig,
+          id: loadingToast,
+        }
       );
     }
   };
 
-  // Update the Stats component to filter out 0 byte files
   const Stats = () => {
-    const validFiles = bucketImages.filter((img) => img.size > 0);
-    const currentFolderFiles =
-      currentFolder === "root"
-        ? validFiles
-        : validFiles.filter((img) => img.folder === currentFolder);
+    const currentFolderFiles = bucketImages.filter(
+      (img) => img.folder === currentFolder
+    );
+    const folderSize = currentFolderFiles.reduce(
+      (sum, img) => sum + img.size,
+      0
+    );
 
-    const totalSize = validFiles.reduce((sum, img) => sum + img.size, 0);
-    const folderSize =
-      currentFolder === "root"
-        ? totalSize
-        : validFiles
-            .filter((img) => img.path.startsWith(currentFolder))
-            .reduce((sum, img) => sum + img.size, 0);
-
-    const folderCount = folders.length - 1; // Subtract 1 for 'root'
-    const totalStorage = 1024 * 1024 * 1024; // 1GB
+    // Assuming total storage limit is 1GB (1024 * 1024 * 1024 bytes)
+    const totalStorage = 1024 * 1024 * 1024;
+    const usedStorage = bucketImages.reduce((sum, img) => sum + img.size, 0);
+    const remainingStorage = totalStorage - usedStorage;
+    const usedPercentage = Math.round((usedStorage / totalStorage) * 100);
 
     return (
       <Box sx={styles.statsContainer}>
-        {/* Files Card */}
         <Paper sx={styles.statCard}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
             <FileCopyIcon sx={{ color: "#64748B" }} />
-            <Typography sx={styles.statLabel}>
-              {currentFolder === "root" ? "Total Files" : "Files in Folder"}
-            </Typography>
+            <Typography sx={styles.statLabel}>Files in Folder</Typography>
           </Box>
           <Typography sx={styles.statValue}>
             {currentFolderFiles.length}
           </Typography>
         </Paper>
 
-        {/* Size Card */}
         <Paper sx={styles.statCard}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
             <StorageIcon sx={{ color: "#64748B" }} />
-            <Typography sx={styles.statLabel}>
-              {currentFolder === "root" ? "Total Size" : "Folder Size"}
-            </Typography>
+            <Typography sx={styles.statLabel}>Folder Size</Typography>
           </Box>
           <Typography sx={styles.statValue}>
             {formatFileSize(folderSize)}
           </Typography>
         </Paper>
 
-        {/* Storage Card */}
+        <Paper sx={styles.statCard}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+            <FolderIcon sx={{ color: "#64748B" }} />
+            <Typography sx={styles.statLabel}>Total Folders</Typography>
+          </Box>
+          <Typography sx={styles.statValue}>{folders.length}</Typography>
+        </Paper>
+
         <Paper sx={styles.statCard}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
             <CloudIcon sx={{ color: "#64748B" }} />
             <Typography sx={styles.statLabel}>Storage Used</Typography>
           </Box>
-          <Box sx={{ mt: 1 }}>
+          <Typography sx={styles.statValue}>
+            {formatFileSize(usedStorage)} / {formatFileSize(totalStorage)}
+          </Typography>
+          <Box
+            sx={{ mt: 1, width: "100%", bgcolor: "#F1F5F9", borderRadius: 1 }}
+          >
             <Box
-              sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
-            >
-              <Typography sx={styles.statValue}>
-                {formatFileSize(totalSize)}
-              </Typography>
-              <Typography sx={{ color: "#94A3B8", fontSize: "0.75rem" }}>
-                of {formatFileSize(totalStorage)}
-              </Typography>
-            </Box>
-            <Box
-              sx={{ mt: 1, width: "100%", bgcolor: "#F1F5F9", borderRadius: 1 }}
-            >
-              <Box
-                sx={{
-                  width: `${Math.min((totalSize / totalStorage) * 100, 100)}%`,
-                  height: 4,
-                  borderRadius: 1,
-                  bgcolor:
-                    totalSize / totalStorage > 0.9 ? "#EF4444" : "#10B981",
-                  transition: "width 0.3s ease",
-                }}
-              />
-            </Box>
-            <Typography
-              variant="caption"
-              sx={{ color: "#64748B", mt: 0.5, display: "block" }}
-            >
-              {formatFileSize(totalStorage - totalSize)} available
-            </Typography>
+              sx={{
+                width: `${usedPercentage}%`,
+                height: 4,
+                borderRadius: 1,
+                bgcolor: usedPercentage > 90 ? "#EF4444" : "#10B981",
+                transition: "width 0.3s ease",
+              }}
+            />
           </Box>
+          <Typography variant="caption" sx={{ color: "#64748B", mt: 0.5 }}>
+            {formatFileSize(remainingStorage)} remaining
+          </Typography>
         </Paper>
       </Box>
     );
   };
-
-  const TableSkeleton = () => (
-    <Box sx={{ opacity: 0.7 }}>
-      {[...Array(rowsPerPage)].map((_, index) => (
-        <Box
-          key={index}
-          sx={{
-            height: "60px",
-            my: 1,
-            px: 2,
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-            bgcolor: "#F8FAFC",
-            borderRadius: 1,
-            animation: "pulse 1.5s ease-in-out infinite",
-            "@keyframes pulse": {
-              "0%, 100%": { opacity: 1 },
-              "50%": { opacity: 0.5 },
-            },
-          }}
-        >
-          <Box
-            sx={{
-              width: 60,
-              height: 60,
-              borderRadius: 1,
-              bgcolor: "#E2E8F0",
-            }}
-          />
-          <Box sx={{ flex: 1 }}>
-            <Box
-              sx={{
-                width: "60%",
-                height: 16,
-                bgcolor: "#E2E8F0",
-                mb: 1,
-                borderRadius: 0.5,
-              }}
-            />
-            <Box
-              sx={{
-                width: "40%",
-                height: 12,
-                bgcolor: "#E2E8F0",
-                borderRadius: 0.5,
-              }}
-            />
-          </Box>
-        </Box>
-      ))}
-    </Box>
-  );
-
-  const handleDragOver = (event) => {
-    event.preventDefault();
-    event.currentTarget.style.borderColor = "#0F172A";
-    event.currentTarget.style.backgroundColor = "#F1F5F9";
-  };
-
-  const handleDragLeave = (event) => {
-    event.preventDefault();
-    event.currentTarget.style.borderColor = "#CBD5E1";
-    event.currentTarget.style.backgroundColor = "#F8FAFC";
-  };
-
-  const handleDrop = async (event) => {
-    event.preventDefault();
-    event.currentTarget.style.borderColor = "#CBD5E1";
-    event.currentTarget.style.backgroundColor = "#F8FAFC";
-
-    const files = Array.from(event.dataTransfer.files);
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-
-    if (imageFiles.length === 0) {
-      toast.error(
-        <ToastMessage
-          message="Invalid file type"
-          description="Please drop only image files"
-        />,
-        toastConfig
-      );
-      return;
-    }
-
-    setSelectedFile(imageFiles[0]);
-    toast.success(
-      <ToastMessage
-        message="File selected"
-        description={`${imageFiles[0].name} (${formatFileSize(
-          imageFiles[0].size
-        )})`}
-      />,
-      toastConfig
-    );
-  };
-
-  const EmptyState = ({ folder }) => (
-    <Box
-      sx={{
-        textAlign: "center",
-        py: 8,
-        px: 3,
-      }}
-    >
-      <CloudIcon
-        sx={{
-          fontSize: 64,
-          color: "#CBD5E1",
-          mb: 2,
-        }}
-      />
-      <Typography variant="h6" sx={{ color: "#1E293B", mb: 1 }}>
-        No files in {folder === "root" ? "storage" : folder}
-      </Typography>
-      <Typography variant="body2" sx={{ color: "#64748B", mb: 3 }}>
-        Upload files or create folders to organize your content
-      </Typography>
-      <Button
-        variant="contained"
-        onClick={handleOpenFileDialog}
-        startIcon={<AddIcon />}
-        sx={{
-          background: "linear-gradient(135deg, #1E293B 0%, #0F172A 100%)",
-        }}
-      >
-        Upload File
-      </Button>
-    </Box>
-  );
-
-  // Update the currentFiles filter logic
-  const currentFiles = bucketImages.filter((image) => {
-    // Filter out 0 byte files
-    if (image.size === 0) return false;
-
-    // Show all files in root folder
-    if (currentFolder === "root") {
-      return true; // Show all files regardless of folder
-    }
-
-    // Show files in current folder
-    return image.folder === currentFolder;
-  });
 
   return (
     // ... copy the bucket images table JSX from ImageUploadForm
@@ -1212,8 +961,6 @@ const StorageForm = () => {
         toastOptions={toastConfig}
         containerStyle={{
           top: 20,
-          right: 20,
-          left: 20,
         }}
         gutter={8}
       />
@@ -1311,19 +1058,17 @@ const StorageForm = () => {
           <Stats />
 
           {/* Folder Grid */}
-          {currentFolder === "root" && folders.length > 1 && (
+          {currentFolder === "root" && (
             <Box sx={styles.folderGrid}>
               {folders
                 .filter((folder) => folder !== "root")
                 .map((folder) => {
-                  const folderFiles = bucketImages.filter(
-                    (img) => img.folder === folder && img.size > 0 // Only count files with size > 0
-                  );
-                  const filesCount = folderFiles.length;
-                  const folderSize = folderFiles.reduce(
-                    (sum, img) => sum + img.size,
-                    0
-                  );
+                  const filesCount = bucketImages.filter(
+                    (img) => img.folder === folder
+                  ).length;
+                  const folderSize = bucketImages
+                    .filter((img) => img.folder === folder)
+                    .reduce((sum, img) => sum + img.size, 0);
 
                   return (
                     <Paper
@@ -1335,7 +1080,7 @@ const StorageForm = () => {
                         <FolderIcon />
                       </Box>
                       <Typography noWrap sx={styles.folderName}>
-                        {folder}
+                        {folder.split("/").pop()}
                       </Typography>
                       <Box sx={styles.folderStats}>
                         <Typography variant="caption" sx={{ color: "#64748B" }}>
@@ -1353,202 +1098,155 @@ const StorageForm = () => {
 
           {/* Filter table contents based on current folder */}
           <TableContainer sx={styles.tableContainer}>
-            {isLoading ? (
-              <TableSkeleton />
-            ) : currentFiles.length === 0 ? (
-              <EmptyState folder={currentFolder} />
-            ) : (
-              <Table sx={{ width: "100%" }}>
-                <TableHead>
-                  <TableRow sx={styles.tableHeader}>
-                    <TableCell sx={{ ...styles.tableHeaderCell, width: "15%" }}>
-                      Preview
-                    </TableCell>
-                    <TableCell sx={{ ...styles.tableHeaderCell, width: "25%" }}>
-                      File Name
-                    </TableCell>
-                    <TableCell sx={{ ...styles.tableHeaderCell, width: "20%" }}>
-                      Type
-                    </TableCell>
-                    <TableCell sx={{ ...styles.tableHeaderCell, width: "15%" }}>
-                      Size
-                    </TableCell>
-                    <TableCell sx={{ ...styles.tableHeaderCell, width: "15%" }}>
-                      Upload Date
-                    </TableCell>
-                    <TableCell
-                      sx={{ ...styles.tableHeaderCell, width: "10%" }}
-                      align="right"
-                    >
-                      Actions
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {currentFiles
-                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                    .map((image) => (
-                      <TableRow key={image.id} sx={styles.tableRow}>
-                        <TableCell>
-                          {image.url ? (
-                            <Box
-                              component="img"
-                              src={image.url}
-                              alt={image.name}
-                              loading="lazy"
-                              onError={(e) => {
-                                e.target.onerror = null; // Prevent infinite loop
-                                e.target.src =
-                                  'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" font-family="Arial" font-size="12" fill="%2364748b" text-anchor="middle" dy=".3em">No Preview</text></svg>';
-                              }}
+            <Table sx={{ width: "100%" }}>
+              <TableHead>
+                <TableRow sx={styles.tableHeader}>
+                  <TableCell sx={{ ...styles.tableHeaderCell, width: "15%" }}>
+                    Preview
+                  </TableCell>
+                  <TableCell sx={{ ...styles.tableHeaderCell, width: "25%" }}>
+                    File Name
+                  </TableCell>
+                  <TableCell sx={{ ...styles.tableHeaderCell, width: "20%" }}>
+                    Type
+                  </TableCell>
+                  <TableCell sx={{ ...styles.tableHeaderCell, width: "15%" }}>
+                    Size
+                  </TableCell>
+                  <TableCell sx={{ ...styles.tableHeaderCell, width: "15%" }}>
+                    Upload Date
+                  </TableCell>
+                  <TableCell
+                    sx={{ ...styles.tableHeaderCell, width: "10%" }}
+                    align="right"
+                  >
+                    Actions
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {bucketImages
+                  .filter((image) => image.folder === currentFolder)
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((image) => (
+                    <TableRow key={image.id} sx={styles.tableRow}>
+                      <TableCell>
+                        <Box
+                          component="img"
+                          src={image.url}
+                          alt={image.name}
+                          sx={{
+                            width: 60,
+                            height: 60,
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                            transition: "transform 0.2s ease",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                            "&:hover": {
+                              transform: "scale(1.05)",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                            },
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          sx={{
+                            fontWeight: 500,
+                            color: "#1E293B",
+                            fontSize: "0.875rem",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: "200px",
+                          }}
+                        >
+                          {image.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          sx={{
+                            color: "#64748B",
+                            fontSize: "0.875rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                          }}
+                        >
+                          <FileCopyIcon sx={{ fontSize: 16 }} />
+                          {image.contentType.split("/")[1].toUpperCase()}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          sx={{ color: "#64748B", fontSize: "0.875rem" }}
+                        >
+                          {formatFileSize(image.size)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          sx={{ color: "#64748B", fontSize: "0.875rem" }}
+                        >
+                          {new Date(image.uploadTime).toLocaleDateString()}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Box
+                          sx={{
+                            display: "flex",
+                            gap: 1,
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <Tooltip title="Copy URL">
+                            <IconButton
+                              onClick={() => handleCopyUrl(image.url)}
                               sx={{
-                                width: 60,
-                                height: 60,
-                                objectFit: "cover",
-                                borderRadius: "8px",
-                                transition: "transform 0.2s ease",
-                                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                                backgroundColor: "#F1F5F9",
-                                "&:hover": {
-                                  transform: "scale(1.05)",
-                                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                                },
-                              }}
-                            />
-                          ) : (
-                            <Box
-                              sx={{
-                                width: 60,
-                                height: 60,
-                                borderRadius: "8px",
-                                backgroundColor: "#F1F5F9",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
                                 color: "#64748B",
-                                fontSize: "12px",
+                                "&:hover": {
+                                  backgroundColor: "#F1F5F9",
+                                  color: "#1E293B",
+                                  transform: "translateY(-2px)",
+                                },
+                                transition: "all 0.2s ease",
                               }}
+                              size="small"
                             >
-                              No Preview
-                            </Box>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Box
-                            sx={{ display: "flex", flexDirection: "column" }}
-                          >
-                            <Typography
+                              <ContentCopyIcon sx={{ fontSize: 20 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete">
+                            <IconButton
+                              onClick={() => handleDelete(image)}
                               sx={{
-                                fontWeight: 500,
-                                color: "#1E293B",
-                                fontSize: "0.875rem",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                maxWidth: "200px",
+                                color: "#EF4444",
+                                "&:hover": {
+                                  backgroundColor: "#FEE2E2",
+                                  transform: "translateY(-2px)",
+                                },
+                                transition: "all 0.2s ease",
                               }}
+                              size="small"
                             >
-                              {image.name}
-                            </Typography>
-                            {/* Always show folder info in root view */}
-                            {(currentFolder === "root" ||
-                              image.folder !== "root") && (
-                              <Typography
-                                sx={{
-                                  color: "#64748B",
-                                  fontSize: "0.75rem",
-                                  mt: 0.5,
-                                }}
-                              >
-                                in{" "}
-                                {image.folder === "root"
-                                  ? "Root Folder"
-                                  : image.folder}
-                              </Typography>
-                            )}
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            sx={{
-                              color: "#64748B",
-                              fontSize: "0.875rem",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 1,
-                            }}
-                          >
-                            <FileCopyIcon sx={{ fontSize: 16 }} />
-                            {image.contentType.split("/")[1].toUpperCase()}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            sx={{ color: "#64748B", fontSize: "0.875rem" }}
-                          >
-                            {formatFileSize(image.size)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            sx={{ color: "#64748B", fontSize: "0.875rem" }}
-                          >
-                            {new Date(image.uploadTime).toLocaleDateString()}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Box
-                            sx={{
-                              display: "flex",
-                              gap: 1,
-                              justifyContent: "flex-end",
-                            }}
-                          >
-                            <Tooltip title="Copy URL">
-                              <IconButton
-                                onClick={() => handleCopyUrl(image.url)}
-                                sx={{
-                                  color: "#64748B",
-                                  "&:hover": {
-                                    backgroundColor: "#F1F5F9",
-                                    color: "#1E293B",
-                                    transform: "translateY(-2px)",
-                                  },
-                                  transition: "all 0.2s ease",
-                                }}
-                                size="small"
-                              >
-                                <ContentCopyIcon sx={{ fontSize: 20 }} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete">
-                              <IconButton
-                                onClick={() => handleDelete(image)}
-                                sx={{
-                                  color: "#EF4444",
-                                  "&:hover": {
-                                    backgroundColor: "#FEE2E2",
-                                    transform: "translateY(-2px)",
-                                  },
-                                  transition: "all 0.2s ease",
-                                }}
-                                size="small"
-                              >
-                                <DeleteIcon sx={{ fontSize: 20 }} />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            )}
+                              <DeleteIcon sx={{ fontSize: 20 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
           </TableContainer>
           <TablePagination
             rowsPerPageOptions={[5, 10, 25, 50]}
             component="div"
-            count={currentFiles.length}
+            count={
+              bucketImages.filter((image) => image.folder === currentFolder)
+                .length
+            }
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handleChangePage}
@@ -1630,9 +1328,7 @@ const StorageForm = () => {
               onClick={handleCloseFolderDialog}
               sx={{
                 color: "#64748B",
-                "&:hover": {
-                  backgroundColor: "#F1F5F9",
-                },
+                "&:hover": { backgroundColor: "#F1F5F9" },
               }}
             >
               Cancel
@@ -1666,58 +1362,34 @@ const StorageForm = () => {
             <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
               {/* File Upload Area */}
               <Box
-                sx={dialogStyles.uploadArea}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+                component="label"
+                sx={{
+                  ...dialogStyles.uploadArea,
+                  cursor: "pointer",
+                }}
               >
-                {isUploading ? (
-                  <Box sx={{ textAlign: "center" }}>
-                    <CircularProgress
-                      variant="determinate"
-                      value={uploadProgress}
-                      size={48}
-                      sx={{ mb: 2 }}
-                    />
-                    <Typography variant="body2" color="text.secondary">
-                      Uploading... {uploadProgress}%
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Box
-                    component="label"
-                    sx={{
-                      ...dialogStyles.uploadArea,
-                      cursor: "pointer",
-                    }}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    <input
-                      type="file"
-                      hidden
-                      onChange={handleFileSelect}
-                      accept="image/*"
-                    />
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <AddIcon sx={{ fontSize: 40, color: "#64748B" }} />
-                      <Typography variant="body1" color="text.secondary">
-                        Click to select or drag and drop your file
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Supported formats: PNG, JPG, GIF up to 10MB
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
+                <input
+                  type="file"
+                  hidden
+                  onChange={handleFileSelect}
+                  accept="image/*"
+                />
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <AddIcon sx={{ fontSize: 40, color: "#64748B" }} />
+                  <Typography variant="body1" color="text.secondary">
+                    Click to select or drag and drop your file
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Supported formats: PNG, JPG, GIF up to 10MB
+                  </Typography>
+                </Box>
               </Box>
 
               {/* Selected File Info */}
@@ -1892,18 +1564,12 @@ const StorageForm = () => {
                   component="img"
                   src={itemToDelete.url}
                   alt={itemToDelete.name}
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src =
-                      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" font-family="Arial" font-size="12" fill="%2364748b" text-anchor="middle" dy=".3em">No Preview</text></svg>';
-                  }}
                   sx={{
                     width: 80,
                     height: 80,
                     borderRadius: 2,
                     objectFit: "cover",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                    backgroundColor: "#F1F5F9",
                   }}
                 />
                 <Box sx={{ flex: 1 }}>
@@ -1944,7 +1610,6 @@ const StorageForm = () => {
               >
                 Are you sure you want to delete this file?
               </Typography>
-
               <Typography
                 variant="body2"
                 sx={{

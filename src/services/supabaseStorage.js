@@ -7,48 +7,54 @@ export class SupabaseStorageService {
     this.initBucket().catch(console.error);
   }
 
-  async initBucket() {
+  async getSession() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session;
+  }
+
+  async initBucket(options = {}) {
+    const session = await this.getSession();
+    if (!session) {
+      throw new Error("Authentication required");
+    }
+
     try {
-      // First check if bucket exists
-      const { data: buckets, error: listError } =
-        await supabase.storage.listBuckets();
+      // Create bucket with RLS policies
+      await supabase.storage.createBucket(this.bucket, {
+        public: false,
+        allowedMimeTypes: ["image/*"],
+        fileSizeLimit: 10485760, // 10MB
+        ...options,
+      });
 
-      if (listError) throw listError;
-
-      const bucketExists = buckets?.some((b) => b.name === this.bucket);
-
-      if (!bucketExists) {
-        // Create bucket with correct settings
-        const { error: createError } = await supabase.storage.createBucket(
-          this.bucket,
-          {
-            public: true, // Make bucket public
-            fileSizeLimit: 10485760, // 10MB
-            allowedMimeTypes: ["image/*"],
-          }
-        );
-
-        if (createError) throw createError;
-
-        // Create policies for the bucket
-        const { error: policyError } = await supabase.rpc(
-          "create_storage_policy",
-          {
-            bucket_name: this.bucket,
-            policy_definition: {
-              role: "authenticated",
-              actions: ["SELECT", "INSERT", "UPDATE", "DELETE"],
-            },
-          }
-        );
-
-        if (policyError) console.error("Policy error:", policyError);
-      }
-
-      return true;
+      // Set up RLS policies
+      await supabase.rpc("setup_storage_policy", {
+        bucket_name: this.bucket,
+        user_id: session.user.id,
+      });
     } catch (error) {
-      console.error("Error initializing bucket:", error);
-      throw error;
+      if (error.message.includes("already exists")) {
+        // Bucket exists, verify permissions
+        await this.verifyAccess();
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  async verifyAccess() {
+    const session = await this.getSession();
+    if (!session) {
+      throw new Error("Authentication required");
+    }
+
+    // Test access by trying to list files
+    const { data, error } = await supabase.storage.from(this.bucket).list();
+
+    if (error) {
+      throw new Error("Storage access denied. Please check permissions.");
     }
   }
 
