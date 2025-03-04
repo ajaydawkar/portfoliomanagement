@@ -42,6 +42,8 @@ import {
   ErrorOutline as ErrorIcon,
   Info as InfoIcon,
   Sync as LoadingIcon,
+  PictureAsPdf as PdfIcon,
+  Image as ImageIcon,
 } from "@mui/icons-material";
 // import { storage as configuredStorage } from "../../config/firebase";
 import {
@@ -384,6 +386,65 @@ const styles = {
 };
 
 const dialogStyles = {
+  uploadArea: {
+    border: "2px dashed #CBD5E1",
+    borderRadius: "16px",
+    padding: "2rem",
+    textAlign: "center",
+    backgroundColor: "#F8FAFC",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    minHeight: "240px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    "&:hover": {
+      borderColor: "#0F172A",
+      backgroundColor: "#F1F5F9",
+      transform: "translateY(-2px)",
+    },
+  },
+  uploadIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: "16px",
+    backgroundColor: "#E2E8F0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: "1.5rem",
+    transition: "all 0.2s ease",
+    "& svg": {
+      fontSize: 32,
+      color: "#64748B",
+      transition: "all 0.2s ease",
+    },
+    "&:hover": {
+      backgroundColor: "#CBD5E1",
+      "& svg": {
+        color: "#1E293B",
+        transform: "scale(1.1)",
+      },
+    },
+  },
+  supportedFormats: {
+    display: "flex",
+    gap: "0.5rem",
+    marginTop: "1rem",
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  formatChip: {
+    padding: "4px 12px",
+    borderRadius: "12px",
+    backgroundColor: "#F1F5F9",
+    fontSize: "0.75rem",
+    color: "#64748B",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  },
   uploadArea: {
     border: "2px dashed #CBD5E1",
     borderRadius: "8px",
@@ -1025,12 +1086,12 @@ const StorageForm = () => {
           </Box>
           <Box sx={{ mt: 1 }}>
             <Box
-              sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
+              sx={{ display: "flex", alignItems: "baseline", gap: 1, mb: 1 }}
             >
               <Typography sx={styles.statValue}>
                 {formatFileSize(totalSize)}
               </Typography>
-              <Typography sx={{ color: "#94A3B8", fontSize: "0.75rem" }}>
+              <Typography sx={{ color: "#94A3B8", fontSize: "0.875rem" }}>
                 of {formatFileSize(totalStorage)}
               </Typography>
             </Box>
@@ -1131,25 +1192,28 @@ const StorageForm = () => {
     event.currentTarget.style.backgroundColor = "#F8FAFC";
 
     const files = Array.from(event.dataTransfer.files);
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    const validFiles = files.filter(
+      (file) =>
+        file.type.startsWith("image/") || file.type === "application/pdf"
+    );
 
-    if (imageFiles.length === 0) {
+    if (validFiles.length === 0) {
       toast.error(
         <ToastMessage
           message="Invalid file type"
-          description="Please drop only image files"
+          description="Please drop only image or PDF files"
         />,
         toastConfig
       );
       return;
     }
 
-    setSelectedFile(imageFiles[0]);
+    setSelectedFile(validFiles[0]);
     toast.success(
       <ToastMessage
         message="File selected"
-        description={`${imageFiles[0].name} (${formatFileSize(
-          imageFiles[0].size
+        description={`${validFiles[0].name} (${formatFileSize(
+          validFiles[0].size
         )})`}
       />,
       toastConfig
@@ -1390,7 +1454,29 @@ const StorageForm = () => {
                     .map((image) => (
                       <TableRow key={image.id} sx={styles.tableRow}>
                         <TableCell>
-                          {image.url ? (
+                          {image.contentType === "application/pdf" ? (
+                            <Box
+                              sx={{
+                                width: 60,
+                                height: 60,
+                                borderRadius: "8px",
+                                backgroundColor: "#F1F5F9",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "transform 0.2s ease",
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                                "&:hover": {
+                                  transform: "scale(1.05)",
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                },
+                              }}
+                            >
+                              <PdfIcon
+                                sx={{ fontSize: 32, color: "#EF4444" }}
+                              />
+                            </Box>
+                          ) : image.url ? (
                             <Box
                               component="img"
                               src={image.url}
@@ -1676,45 +1762,74 @@ const StorageForm = () => {
                     <CircularProgress
                       variant="determinate"
                       value={uploadProgress}
-                      size={48}
-                      sx={{ mb: 2 }}
+                      size={64}
+                      thickness={4}
+                      sx={{
+                        color: "#0F172A",
+                        mb: 2,
+                        "& .MuiCircularProgress-circle": {
+                          strokeLinecap: "round",
+                        },
+                      }}
                     />
-                    <Typography variant="body2" color="text.secondary">
-                      Uploading... {uploadProgress}%
+                    <Typography variant="h6" sx={{ color: "#1E293B", mb: 1 }}>
+                      Uploading...
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#64748B" }}>
+                      {uploadProgress}% complete
                     </Typography>
                   </Box>
                 ) : (
                   <Box
                     component="label"
                     sx={{
-                      ...dialogStyles.uploadArea,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
                       cursor: "pointer",
+                      width: "100%",
                     }}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
                   >
                     <input
                       type="file"
                       hidden
                       onChange={handleFileSelect}
-                      accept="image/*"
+                      accept="image/*,.pdf"
                     />
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
+                    <Box sx={dialogStyles.uploadIcon}>
+                      <AddIcon />
+                    </Box>
+                    <Typography variant="h6" sx={{ color: "#1E293B", mb: 1 }}>
+                      Click to select or drag and drop
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "#64748B", mb: 3 }}
                     >
-                      <AddIcon sx={{ fontSize: 40, color: "#64748B" }} />
-                      <Typography variant="body1" color="text.secondary">
-                        Click to select or drag and drop your file
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Supported formats: PNG, JPG, GIF up to 10MB
-                      </Typography>
+                      Upload your files here
+                    </Typography>
+
+                    <Box sx={dialogStyles.supportedFormats}>
+                      <Box sx={dialogStyles.formatChip}>
+                        <ImageIcon sx={{ fontSize: 16 }} />
+                        PNG
+                      </Box>
+                      <Box sx={dialogStyles.formatChip}>
+                        <ImageIcon sx={{ fontSize: 16 }} />
+                        JPG
+                      </Box>
+                      <Box sx={dialogStyles.formatChip}>
+                        <ImageIcon sx={{ fontSize: 16 }} />
+                        GIF
+                      </Box>
+                      <Box sx={dialogStyles.formatChip}>
+                        <PdfIcon sx={{ fontSize: 16 }} />
+                        PDF
+                      </Box>
+                      <Box sx={dialogStyles.formatChip}>
+                        <StorageIcon sx={{ fontSize: 16 }} />
+                        Up to 10MB
+                      </Box>
                     </Box>
                   </Box>
                 )}
